@@ -4,10 +4,12 @@ Serial serial;
 
 int[] values = new int[5]; // Array to store the received values
 float azimuth, elevation; // Variables for azimuth and elevation values
+String text;
 
 void setup() {
   fullScreen();
   serial = new Serial(this, Serial.list()[1], 9600); // Change the index [0] if needed
+  text = "";
 }
 
 void draw() {
@@ -26,11 +28,15 @@ void draw() {
         azimuth = Float.parseFloat(tokens[5].trim().substring(3));
         elevation = Float.parseFloat(tokens[6].trim().substring(3));
       }
+      else {
+        text = data;
+      }
     }
   }
   
   drawBarGraph();
   drawAzimuthElevation();
+  drawTextAtTop();
 }
 
 void drawBarGraph() {
@@ -56,10 +62,18 @@ void drawAzimuthElevation() {
   
   fill(225, 225, 200);
   ellipse(azX, elY, 10, 10);
+  fill(0);
+  ellipse(azX, elY, 6, 6);
   
   fill(255, 255, 200);
   textAlign(LEFT);
   textSize(20);
   text("AZ: " + azimuth, 20, 40);
   text("EL: " + elevation, 20, 80);
+}
+
+void drawTextAtTop() {
+  fill(200, 200, 200);
+  textAlign(LEFT);
+  text(text, width / 3.0, 80);
 }

@@ -82,8 +82,8 @@ void loop() {
         // moveTo(az_info, angleEstimate.azimuth);
         // elevation.stop();
         // moveTo(el_info, angleEstimate.elevation);
-        delay(20);
     }
+    delay(50);
 
     if (Serial.available() > 0) {
         String input = Serial.readStringUntil('\n');
@@ -177,6 +177,9 @@ Position getAngleEstimate(int *coarse_readings) {
         (float)(coarse_readings[2] - lowest_reading) / diff, (float)(coarse_readings[3] - lowest_reading) / diff,
         (float)(coarse_readings[4] - lowest_reading) / diff,
     };
+
+    Serial.printf("%.2f  \t\t%.2f  \t\t%.2f  \t\t%.2f  \t\t%.2f\n", normalized_readings[0], normalized_readings[1],
+                  normalized_readings[2], normalized_readings[3], normalized_readings[4]);
 
     int avg_horizontal_peak =
         (normalized_readings[highest_horizontal_index] + normalized_readings[second_highest_horizontal_index]);
