@@ -1,11 +1,26 @@
 #include <AccelStepper.h>
 
-typedef struct SensorCluster {
-    int num_sensors;
-    int sensors[];
+typedef enum {
+  AZ,
+  EL,
+  // TODO: add the fine sensor types here
+} SensType;
+
+typedef struct PhotoTransistor {
+  SensType type;
+  int pin;
+  int azPosition;
+  int elPosition;
+  int intensity;
 };
 
-typedef struct StepperInfo {
+
+typedef struct SensorCluster {
+    int num_sensors;
+    PhotoTransistor sensors[];
+};
+
+typedef struct SafeStepper {
     AccelStepper *stepper;
     int maxDegLower;
     int maxDegUpper;
@@ -14,7 +29,7 @@ typedef struct StepperInfo {
 typedef struct ButtonInfo {
     int pin;
     bool pressed;
-    int num_pressed;
+    int numPressed;
 };
 
 typedef struct Position {
@@ -25,12 +40,14 @@ typedef struct Position {
 AccelStepper azimuth(AccelStepper::FULL4WIRE, 38, 9, 8, 33);
 AccelStepper elevation(AccelStepper::FULL4WIRE, 10, 3, 1, 7);
 
-ButtonInfo az_button = {11, false, 0};
+ButtonInfo azButton = {11, false, 0};
 
-StepperInfo az_info = {&azimuth, 0, 360};
-StepperInfo el_info = {&elevation, 0, 180};
+SafeStepper azSafe = {&azimuth, 0, 360};
+SafeStepper elSafe = {&elevation, 0, 180};
 
-SensorCluster coarseSensor = {5, {5, 6, 12, 14, 18}};
+SensorCluster coarseSensor = {5, {{EL, 5, -1, 90, 0}, {AZ, 6, 0, 0, 0}, {AZ, 12, 90, 0, 0}, {AZ, 14, 180, 0, 0}, {AZ, 18, 270, 0, 0}}};
+
+//SensorCluster coarseSensor = {5, {5, 6, 12, 14, 18}, {}};
 // SensorCluster fineSensor = {4, {_, _, _, _}};
 
 // full rotation, from https://lastminuteengineers.com/28byj48-stepper-motor-arduino-tutorial/
@@ -39,8 +56,8 @@ const int lowerElevationLimit = 0;
 const int upperElevationLimit = 180;
 
 void IRAM_ATTR buttonIsr() {
-    az_button.num_pressed++;
-    az_button.pressed = true;
+    azButton.numPressed++;
+    azButton.pressed = true;
 }
 
 void setup() {
@@ -48,8 +65,8 @@ void setup() {
     digitalWrite(13, HIGH);
     delay(500);
     // TODO (npalmar): Implement azimuth calibration
-    pinMode(az_button.pin, INPUT);
-    attachInterrupt(az_button.pin, buttonIsr, FALLING);
+    pinMode(azButton.pin, INPUT);
+    attachInterrupt(azButton.pin, buttonIsr, FALLING);
 
     azimuth.setMaxSpeed(200);
     azimuth.setAcceleration(20);
@@ -67,21 +84,23 @@ void loop() {
     azimuth.run();
     elevation.run();
 
-    int *coarseReadings = getSensorReadings(coarseSensor);
-    Position angleEstimate = getAngleEstimate(coarseReadings);
+    // TODO (npalmar): change sensor readings to take the average or median over a 10 second period (avoids noise/outliers)
+    getSensorReadings(coarseSensor);
+//    Position angleEstimate = getAngleEstimate(coarseSensor.readings);
 
     if (azimuth.distanceToGo() == 0 && elevation.distanceToGo() == 0) {
         azimuth.disableOutputs();
         elevation.disableOutputs();
 
-        Serial.printf("%d\t\t%d\t\t%d\t\t%d\t\t%d\t\tAz:%f\t\tEl:%f\n", coarseReadings[0], coarseReadings[1],
-                      coarseReadings[2], coarseReadings[3], coarseReadings[4], angleEstimate.azimuth,
-                      angleEstimate.elevation);
+        Serial.printf("%d\t\t%d\t\t%d\t\t%d\t\t%d\t\t\n", coarseSensor.sensors[0].intensity, coarseSensor.sensors[1].intensity,
+                      coarseSensor.sensors[2].intensity, coarseSensor.sensors[3].intensity, coarseSensor.sensors[4].intensity);
+//                    Az:%f\t\tEl:%f    
+//                    angleEstimate.azimuth, angleEstimate.elevation);
 
         // azimuth.stop();
-        // moveTo(az_info, angleEstimate.azimuth);
+        // moveTo(azSafe, angleEstimate.azimuth);
         // elevation.stop();
-        // moveTo(el_info, angleEstimate.elevation);
+        // moveTo(elSafe, angleEstimate.elevation);
     }
     delay(50);
 
@@ -91,28 +110,28 @@ void loop() {
 
         if (input.startsWith("raz")) {
             float degrees = input.substring(3).toFloat();
-            move(az_info, degrees);
+            move(azSafe, degrees);
         } else if (input.startsWith("rel")) {
             float degrees = input.substring(3).toFloat();
-            move(el_info, degrees);
+            move(elSafe, degrees);
         } else if (input.startsWith("az")) {
             float degrees = input.substring(2).toFloat();
-            moveTo(az_info, degrees);
+            moveTo(azSafe, degrees);
         } else if (input.startsWith("el")) {
             float degrees = input.substring(2).toFloat();
-            moveTo(el_info, degrees);
+            moveTo(elSafe, degrees);
         } else if (input.startsWith("reset")) {
             resetElevation(elevation);
         }
     }
 
-    if (az_button.pressed && az_button.num_pressed == 1) {
+    if (azButton.pressed && azButton.numPressed == 1) {
         Serial.println("Button pressed once");
         azimuth.setCurrentPosition(0);
-        az_button.pressed = false;
-    } else if (az_button.pressed) {
+        azButton.pressed = false;
+    } else if (azButton.pressed) {
         Serial.println("Button pressed");
-        az_button.pressed = false;
+        azButton.pressed = false;
     }
 }
 
@@ -121,16 +140,11 @@ void loop() {
 //
 
 /// @brief Gets sensor readings from the given sensor cluster
-/// @param sensor_cluster The sensor cluster to read from
-/// @return The sensor readings
-int *getSensorReadings(SensorCluster &sensor_cluster) {
-    int *sensor_readings = new int[sensor_cluster.num_sensors];
-
+/// @param sensor_cluster The sensor cluster to read from and write values to
+void getSensorReadings(SensorCluster &sensor_cluster) {
     for (int i = 0; i < sensor_cluster.num_sensors; i++) {
-        sensor_readings[i] = analogRead(sensor_cluster.sensors[i]);
+        sensor_cluster.sensors[i].intensity = analogRead(sensor_cluster.sensors[i].pin);
     }
-
-    return sensor_readings;
 }
 
 /// @brief Gets an angle estimate from coarse sensor readings (elevation and azimuth)
@@ -207,6 +221,10 @@ Position getAngleEstimate(int *coarse_readings) {
     return angle_estimate;
 }
 
+//Position getAngleEstimate(int *coarse_readings) {
+//    Position angle_estimate = {0, 0};
+//}
+
 /// @brief Converts degrees to steps for the stepper motor
 long degreesToSteps(float degrees) { return (long)(degrees / 360 * fullRotation); }
 
@@ -216,7 +234,7 @@ float stepsToDegrees(long steps) { return (float)((float)steps / fullRotation * 
 /// @brief Moves the stepper motor to the given angle
 /// @param stepper_info The stepper motor to move
 /// @param angleDeg The angle to move the stepper motor to in degrees
-void moveTo(StepperInfo &stepper_info, long angleDeg) {
+void moveTo(SafeStepper &stepper_info, long angleDeg) {
     if (angleDeg > stepper_info.maxDegUpper) {
         angleDeg = stepper_info.maxDegUpper;
     } else if (angleDeg < stepper_info.maxDegLower) {
@@ -230,7 +248,7 @@ void moveTo(StepperInfo &stepper_info, long angleDeg) {
 /// @brief Moves the stepper motor relateive to its current position by the given angle
 /// @param stepper_info The stepper motor to move
 /// @param angleDeg The angle to move the stepper motor by in degrees
-void move(StepperInfo &stepper_info, long angleDeg) {
+void move(SafeStepper &stepper_info, long angleDeg) {
     float currentAngle = stepsToDegrees(stepper_info.stepper->currentPosition());
     angleDeg = currentAngle + angleDeg;
 
