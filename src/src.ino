@@ -91,9 +91,10 @@ void loop() {
     //                   coarseAngleEstimate.elevation);
 
     if (azSafe.stepper->distanceToGo() == 0 && elSafe.stepper->distanceToGo() == 0) {
-        Position rollingAngleEstimates[50] = {};
+        digitalWrite(13, HIGH);
+        Position rollingAngleEstimates[100] = {};
 
-        for (int i = 0; i < 50; i++) {
+        for (int i = 0; i < 100; i++) {
             getSensorReadings(coarseSensor);
             rollingAngleEstimates[i] = getCoarseAngleEstimate(coarseSensor);
             delay(20);
@@ -101,19 +102,21 @@ void loop() {
 
         Position averageAngleEstimate = {0, 0};
 
-        for (int i = 0; i < 50; i++) {
+        for (int i = 0; i < 100; i++) {
             averageAngleEstimate.azimuth += rollingAngleEstimates[i].azimuth;
             averageAngleEstimate.elevation += rollingAngleEstimates[i].elevation;
         }
 
-        averageAngleEstimate.azimuth /= 50;
-        averageAngleEstimate.elevation /= 50;
+        averageAngleEstimate.azimuth /= 100;
+        averageAngleEstimate.elevation /= 100;
 
         Serial.printf("%d\t\t%d\t\t%d\t\t%d\t\t%d\t\tAz:%f\t\tEl:%f\n", 0, 0, 0, 0, 0, averageAngleEstimate.azimuth,
                       averageAngleEstimate.elevation);
 
-        // azimuth.stop();
-        // moveTo(azSafe, coarseAngleEstimate.azimuth);
+        digitalWrite(13, LOW);
+
+        azimuth.stop();
+        moveTo(azSafe, averageAngleEstimate.azimuth);
         elevation.stop();
         moveTo(elSafe, averageAngleEstimate.elevation);
     }
@@ -206,12 +209,10 @@ Position getCoarseAngleEstimate(SensorCluster &coarseSensor) {
 
     int azSensorDist = coarseSensor.sensors[0].azPosition - coarseSensor.sensors[1].azPosition;
 
-    int azIntensity = lerp(coarseSensor.sensors[0].intensity, coarseSensor.sensors[1].intensity, azWeight);
+    // int azIntensity = lerp(coarseSensor.sensors[0].intensity, coarseSensor.sensors[1].intensity, azWeight);
 
     if (abs(azSensorDist) == 180) {
         angle_estimate.azimuth = coarseSensor.sensors[0].azPosition;
-        azIntensity = coarseSensor.sensors[0].intensity;
-
     } else if (azSensorDist == 270) {
         angle_estimate.azimuth = lerp(270, 360, azWeight);
     } else if (azSensorDist == -270) {
@@ -220,8 +221,9 @@ Position getCoarseAngleEstimate(SensorCluster &coarseSensor) {
         angle_estimate.azimuth = lerp(coarseSensor.sensors[0].azPosition, coarseSensor.sensors[1].azPosition, azWeight);
     }
 
-    float elWeight = 1.0 - (((float)coarseSensor.sensors[4].intensity) / (coarseSensor.sensors[4].intensity + azIntensity));
+    int azIntensity = coarseSensor.sensors[0].intensity;
 
+    float elWeight = 1.0 - (((float)coarseSensor.sensors[4].intensity) / (coarseSensor.sensors[4].intensity + azIntensity));
     angle_estimate.elevation = lerp(coarseSensor.sensors[4].elPosition, coarseSensor.sensors[0].elPosition, elWeight);
 
     return angle_estimate;

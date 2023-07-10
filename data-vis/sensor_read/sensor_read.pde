@@ -58,12 +58,12 @@ void drawBarGraph() {
 
 void drawAzimuthElevation() {
   float azX = map(azimuth, 0, 360, 0, width);
-  float elY = map(elevation, 0, 90, height, 0);
+  float elY = map(elevation, 0, 90, height / 2, 0);
   
-  fill(225, 225, 200);
-  ellipse(azX, elY, 10, 10);
+  fill(150, 0, 200);
+  ellipse(azX, elY, 32, 32);
   fill(0);
-  ellipse(azX, elY, 6, 6);
+  ellipse(azX, elY, 8, 8);
   
   fill(255, 255, 200);
   textAlign(LEFT);
