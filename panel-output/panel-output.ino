@@ -18,16 +18,70 @@ float power_mW = 0;
 
 // Tracking time
 unsigned long last = 0;
-//unsigned long led_last = 0;
 float t = 0;
-//int led = 2000;
-//bool state = false;
+
+// expected power on panel
+// get this value from a python script using an average intensity during the time
+float max_power_mW = 2;
+
+typedef struct cmyLED
+{
+  int cyan_pin;
+  int magenta_pin;
+  int yellow_pin;
+  unsigned long last_time;
+  int hold_time;
+};
+
+cmyLED indicator_led = {17, 16, 4, 0, 2000};
+
+void ledSetup(cmyLED led)
+{
+  pinMode(led.cyan_pin, OUTPUT);
+  pinMode(led.magenta_pin, OUTPUT);
+  pinMode(led.yellow_pin, OUTPUT);
+}
+
+void ledOff(cmyLED led)
+{
+  digitalWrite(led.cyan_pin, HIGH);
+  digitalWrite(led.magenta_pin, HIGH);
+  digitalWrite(led.yellow_pin, HIGH);
+}
+
+void makeRed(cmyLED led)
+{
+  // clear any previous colour and make red
+  ledOff(led);
+  delay(10);
+  digitalWrite(led.cyan_pin, LOW);
+}
+
+void makeYellow(cmyLED led)
+{
+  ledOff(led);
+  delay(10);
+  digitalWrite(led.magenta_pin, LOW);
+  digitalWrite(led.cyan_pin, LOW);
+}
+
+void makeGreen(cmyLED led)
+{
+  ledOff(led);
+  delay(10);
+  digitalWrite(led.magenta_pin, LOW);
+}
 
 // Run once
 void setup(void) 
 {
   pinMode(base, OUTPUT);
   pinMode(2, OUTPUT);
+
+  ledSetup(indicator_led);
+  delay(100);
+  ledOff(indicator_led);
+  
   Serial.begin(115200);
   while (!Serial) {
       // will pause Zero, Leonardo, etc until serial console opens
@@ -51,7 +105,6 @@ void setup(void)
   Serial.println("Measuring voltage and current with INA219 ...");
 
   last = millis();
-//  led_last = millis();
 }
 
 // Run indefinitely
@@ -76,10 +129,30 @@ void loop(void)
     // Max power (mW) is at roughly 0.7x the voltage
     power_mW = (0.7*voltage)*current_mA;
 
+    // output a colour depending on the power being measured
+    if (power_mW / max_power_mW > 0.7)
+    {
+      makeGreen(indicator_led);
+    }
+    else if (power_mW / max_power_mW > 0.3)
+    {
+      makeYellow(indicator_led);
+    }
+    else
+    {
+      makeRed(indicator_led);
+    }
+    indicator_led.last_time = millis();
+
     // Format: Time, Voltage, Current, Estimated Power
 //    Serial.print(t); Serial.print(", "); 
 //    Serial.print(voltage); Serial.print(", "); 
 //    Serial.print(current_mA); Serial.print(", ");
     Serial.println(power_mW);
+  }
+
+  if (millis() - indicator_led.last_time > indicator_led.hold_time)
+  {
+    ledOff(indicator_led);
   }
 }
