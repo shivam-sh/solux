@@ -7,7 +7,7 @@ Adafruit_INA219 ina219;
 int base = 18;
 
 // Reporting frequency
-float freq = 10; // Hz
+float freq = 0.1; // Hz
 // Delay after changing state of transistor
 int del = 10; 
 
