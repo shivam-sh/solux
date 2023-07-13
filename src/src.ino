@@ -1,4 +1,11 @@
 #include <AccelStepper.h>
+#include <Adafruit_NeoPixel.h>
+
+#ifdef __AVR__
+#include <avr/power.h>
+#endif
+#define PIN 40
+#define NUMPIXELS 1
 
 typedef enum {
     AZ,
@@ -6,13 +13,7 @@ typedef enum {
     // TODO: add the fine sensor types here
 } SensType;
 
-typedef enum {
-  WAITING,
-  MEASURING,
-  SET_MOVING,
-  MOVING,
-  TESTING
-} PanelState;
+typedef enum { WAITING, MEASURING, SET_MOVING, MOVING, TESTING } PanelState;
 
 typedef struct PhotoTransistor {
     SensType type;
@@ -44,7 +45,9 @@ typedef struct Position {
     float elevation;
 };
 
-PanelState currentState = TESTING;
+Adafruit_NeoPixel pixel(NUMPIXELS, PIN, NEO_RGB + NEO_KHZ800);
+
+PanelState currentState = WAITING;
 unsigned long lastMove = 0;
 const int movePeriodSec = 15;
 
@@ -64,7 +67,7 @@ SafeStepper elSafe = {&elevation, 0, 90};
 SensorCluster coarseSensor = {
     5, {{EL, 6, -1, 90, 0}, {AZ, 12, 0, 0, 0}, {AZ, 14, 90, 0, 0}, {AZ, 18, 180, 0, 0}, {AZ, 17, 270, 0, 0}}};
 
-int sensorIntensity[5][100] = { 0 };
+int sensorIntensity[5][100] = {0};
 
 // full rotation, from https://lastminuteengineers.com/28byj48-stepper-motor-arduino-tutorial/
 const long fullRotation = 2038;
@@ -77,9 +80,10 @@ void IRAM_ATTR buttonIsr() {
 }
 
 void setup() {
+    pixel.setPixelColor(0, pixel.Color(0, 100, 0));
+    pixel.show();
+
     pinMode(13, OUTPUT);
-    digitalWrite(13, HIGH);
-    delay(500);
     // TODO (npalmar): Implement azimuth calibration
     pinMode(azButton.pin, INPUT);
     attachInterrupt(azButton.pin, buttonIsr, FALLING);
@@ -92,113 +96,106 @@ void setup() {
     resetElevation(elevation);
 
     Serial.begin(9600);
-
-    digitalWrite(13, LOW);
+    pixel.begin();
 }
 
 void loop() {
     azimuth.run();
     elevation.run();
+    pixel.clear();
 
-    if (currentState == WAITING)
-    {
-      if ((millis() - lastMove) * 0.001 > movePeriodSec)
-      {
-        currentState = MEASURING;
-        digitalWrite(13, HIGH);
-      }
-    }
-
-    if (currentState == MEASURING)
-    {
-      if (numReading >= totalNumReadings)
-      {
-        currentState = SET_MOVING;
-        numReading = 0;
-        digitalWrite(13, LOW);
-      }
-      
-      else if ((millis() - lastMeasure) * 0.001 > measurePeriodSec)
-      {
-        getSensorReadings(coarseSensor);
-        for (uint8_t i = 0; i < coarseSensor.num_sensors; i++)
-        {
-          sensorIntensity[i][numReading] = coarseSensor.sensors[i].intensity;
+    if (currentState == WAITING) {
+        pixel.setPixelColor(0, pixel.Color(0, 100, 0));
+        pixel.show();
+        if ((millis() - lastMove) * 0.001 > movePeriodSec) {
+            currentState = MEASURING;
         }
-        numReading++;
-        lastMeasure = millis();
-      }
     }
 
-
-    if (currentState == SET_MOVING)
-    {
-      // get the median intensity from sensorIntensity and set in coarseSensor 
-      for (uint8_t i = 0; i < coarseSensor.num_sensors; i++)
-      {
-        qsort(sensorIntensity[i], totalNumReadings, sizeof(sensorIntensity[i][0]), sort_desc2);
-        // take the median of even numbers
-        if (totalNumReadings % 2 == 0)
-        {
-          coarseSensor.sensors[i].intensity = (float)(sensorIntensity[i][totalNumReadings/2] + sensorIntensity[i][totalNumReadings/2  - 1]) / 2;
+    if (currentState == MEASURING) {
+        pixel.setPixelColor(0, pixel.Color(0, 100, 100));
+        pixel.show();
+        if (numReading >= totalNumReadings) {
+            currentState = SET_MOVING;
+            numReading = 0;
         }
-        else
-        {
-          coarseSensor.sensors[i].intensity = sensorIntensity[i][totalNumReadings/2];
+
+        else if ((millis() - lastMeasure) * 0.001 > measurePeriodSec) {
+            getSensorReadings(coarseSensor);
+            for (uint8_t i = 0; i < coarseSensor.num_sensors; i++) {
+                sensorIntensity[i][numReading] = coarseSensor.sensors[i].intensity;
+            }
+            numReading++;
+            lastMeasure = millis();
         }
-      }
-      Serial.printf("%d\t\t%d\t\t%d\t\t%d\t\t%d\t\t\n", coarseSensor.sensors[0].intensity,
-                       coarseSensor.sensors[1].intensity, coarseSensor.sensors[2].intensity,
-                       coarseSensor.sensors[3].intensity, coarseSensor.sensors[4].intensity);
-      
-      // calculate the position to move
-      Position angleEstimate = {0, 0};
-      angleEstimate = getCoarseAngleEstimate(coarseSensor);
-      Serial.printf("Az:%f\t\tEl:%f\n", angleEstimate.azimuth,
-                      angleEstimate.elevation);      
-      azimuth.stop();
-      moveTo(azSafe, angleEstimate.azimuth);
-      elevation.stop();
-      moveTo(elSafe, angleEstimate.elevation);
-     
-      currentState = MOVING;
     }
 
-    if (currentState == MOVING)
-    {
-      // check when moving is done to put it back into waiting state
-      if (azSafe.stepper->distanceToGo() == 0 && elSafe.stepper->distanceToGo() == 0) 
-      {
-        lastMove = millis();
-        currentState = WAITING;
-      }
+    if (currentState == SET_MOVING) {
+        pixel.setPixelColor(0, pixel.Color(100, 0, 0));
+        pixel.show();
+        // get the median intensity from sensorIntensity and set in coarseSensor
+        for (uint8_t i = 0; i < coarseSensor.num_sensors; i++) {
+            qsort(sensorIntensity[i], totalNumReadings, sizeof(sensorIntensity[i][0]), sort_desc2);
+            // take the median of even numbers
+            if (totalNumReadings % 2 == 0) {
+                coarseSensor.sensors[i].intensity =
+                    (float)(sensorIntensity[i][totalNumReadings / 2] + sensorIntensity[i][totalNumReadings / 2 - 1]) / 2;
+            } else {
+                coarseSensor.sensors[i].intensity = sensorIntensity[i][totalNumReadings / 2];
+            }
+        }
+        Serial.printf("%d\t\t%d\t\t%d\t\t%d\t\t%d\t\t\n", coarseSensor.sensors[0].intensity,
+                      coarseSensor.sensors[1].intensity, coarseSensor.sensors[2].intensity,
+                      coarseSensor.sensors[3].intensity, coarseSensor.sensors[4].intensity);
+
+        // calculate the position to move
+        Position angleEstimate = {0, 0};
+        angleEstimate = getCoarseAngleEstimate(coarseSensor);
+        Serial.printf("Az:%f\t\tEl:%f\n", angleEstimate.azimuth, angleEstimate.elevation);
+        azimuth.stop();
+        moveTo(azSafe, angleEstimate.azimuth);
+        elevation.stop();
+        moveTo(elSafe, angleEstimate.elevation);
+
+        currentState = MOVING;
     }
 
-    if (currentState == TESTING)
-    {
-      if (Serial.available() > 0) {
-          String input = Serial.readStringUntil('\n');
-          Serial.println(input);
-  
-          if (input.startsWith("raz")) {
-              float degrees = input.substring(3).toFloat();
-              move(azSafe, degrees);
-          } else if (input.startsWith("rel")) {
-              float degrees = input.substring(3).toFloat();
-              move(elSafe, degrees);
-          } else if (input.startsWith("az")) {
-              float degrees = input.substring(2).toFloat();
-              moveTo(azSafe, degrees);
-          } else if (input.startsWith("el")) {
-              float degrees = input.substring(2).toFloat();
-              moveTo(elSafe, degrees);
-          } else if (input.startsWith("reset")) {
-              resetElevation(elevation);
-          } else if (input.startsWith("dis")) {
-              azimuth.disableOutputs();
-              elevation.disableOutputs();
-          }
-      }
+    if (currentState == MOVING) {
+        pixel.setPixelColor(0, pixel.Color(0, 0, 200));
+        pixel.show();
+        // check when moving is done to put it back into waiting state
+        if (azSafe.stepper->distanceToGo() == 0 && elSafe.stepper->distanceToGo() == 0) {
+            lastMove = millis();
+            currentState = WAITING;
+        }
+    }
+
+    if (currentState == TESTING) {
+        pixel.setPixelColor(0, pixel.Color(100, 100, 100));
+        pixel.show();
+        if (Serial.available() > 0) {
+            String input = Serial.readStringUntil('\n');
+            Serial.println(input);
+
+            if (input.startsWith("raz")) {
+                float degrees = input.substring(3).toFloat();
+                move(azSafe, degrees);
+            } else if (input.startsWith("rel")) {
+                float degrees = input.substring(3).toFloat();
+                move(elSafe, degrees);
+            } else if (input.startsWith("az")) {
+                float degrees = input.substring(2).toFloat();
+                moveTo(azSafe, degrees);
+            } else if (input.startsWith("el")) {
+                float degrees = input.substring(2).toFloat();
+                moveTo(elSafe, degrees);
+            } else if (input.startsWith("reset")) {
+                resetElevation(elevation);
+            } else if (input.startsWith("dis")) {
+                azimuth.disableOutputs();
+                elevation.disableOutputs();
+            }
+        }
     }
 }
 
@@ -215,7 +212,8 @@ void getSensorReadings(SensorCluster &sensor_cluster) {
 }
 
 // compare function for qsort
-/// @brief Sorts the sensor readings (between different sensors) in descending order of intensity but with the elevation sensor at the end
+/// @brief Sorts the sensor readings (between different sensors) in descending order of intensity but with the elevation
+/// sensor at the end
 /// @param cmp1 The first sensor reading
 /// @param cmp2 The second sensor reading
 int sort_desc(const void *cmp1, const void *cmp2) {
@@ -234,10 +232,10 @@ int sort_desc(const void *cmp1, const void *cmp2) {
 // compare function for qsort
 // @breif Sorts the intensity readings for a single sensor
 /// @param cmp1 The first sensor reading
-/// @param cmp2 The second sensor 
+/// @param cmp2 The second sensor
 int sort_desc2(const void *cmp1, const void *cmp2) {
-    int i1 = *(int*)cmp1;
-    int i2 = *(int*)cmp2;
+    int i1 = *(int *)cmp1;
+    int i2 = *(int *)cmp2;
 
     return i2 - i1;
 }
@@ -282,10 +280,12 @@ Position getCoarseAngleEstimate(SensorCluster &coarseSensor) {
     }
 
     // TESTING A CHANGE HERE
-//    float elWeight = 1.0 - (((float)coarseSensor.sensors[4].intensity) / (coarseSensor.sensors[4].intensity + azIntensity));
-//
-//    angle_estimate.elevation = lerp(coarseSensor.sensors[4].elPosition, coarseSensor.sensors[0].elPosition, elWeight);
-    float elWeight = 1.0 - (((float)coarseSensor.sensors[4].intensity) / (coarseSensor.sensors[4].intensity + coarseSensor.sensors[0].intensity));
+    //    float elWeight = 1.0 - (((float)coarseSensor.sensors[4].intensity) / (coarseSensor.sensors[4].intensity +
+    //    azIntensity));
+    //
+    //    angle_estimate.elevation = lerp(coarseSensor.sensors[4].elPosition, coarseSensor.sensors[0].elPosition, elWeight);
+    float elWeight = 1.0 - (((float)coarseSensor.sensors[4].intensity) /
+                            (coarseSensor.sensors[4].intensity + coarseSensor.sensors[0].intensity));
 
     angle_estimate.elevation = lerp(coarseSensor.sensors[4].elPosition, coarseSensor.sensors[0].elPosition, elWeight);
 
