@@ -243,7 +243,7 @@ int sort_desc2(const void *cmp1, const void *cmp2) {
 /// @brief Linear interpolation between two values
 int lerp(int a, int b, float t) { return a + t * (b - a); }
 
-/// @brcoarseAngleEstimateief Gets an angle estimate from coarse sensor readings (elevation and azimuth)
+/// @brief Gets an angle estimate from coarse sensor readings (elevation and azimuth)
 /// @param coarseSensor The coarse sensor data structure
 /// @return The angle estimate
 Position getCoarseAngleEstimate(SensorCluster &coarseSensor) {
