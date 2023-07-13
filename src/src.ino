@@ -1,9 +1,6 @@
 #include <AccelStepper.h>
 #include <Adafruit_NeoPixel.h>
 
-#ifdef __AVR__
-#include <avr/power.h>
-#endif
 #define PIN 40
 #define NUMPIXELS 1
 
@@ -230,7 +227,7 @@ int sort_desc(const void *cmp1, const void *cmp2) {
 }
 
 // compare function for qsort
-// @breif Sorts the intensity readings for a single sensor
+/// @brief Sorts the intensity readings for a single sensor
 /// @param cmp1 The first sensor reading
 /// @param cmp2 The second sensor
 int sort_desc2(const void *cmp1, const void *cmp2) {
@@ -265,11 +262,8 @@ Position getCoarseAngleEstimate(SensorCluster &coarseSensor) {
 
     int azSensorDist = coarseSensor.sensors[0].azPosition - coarseSensor.sensors[1].azPosition;
 
-    int azIntensity = lerp(coarseSensor.sensors[0].intensity, coarseSensor.sensors[1].intensity, azWeight);
-
     if (abs(azSensorDist) == 180) {
         angle_estimate.azimuth = coarseSensor.sensors[0].azPosition;
-        azIntensity = coarseSensor.sensors[0].intensity;
 
     } else if (azSensorDist == 270) {
         angle_estimate.azimuth = lerp(270, 360, azWeight);
@@ -279,11 +273,6 @@ Position getCoarseAngleEstimate(SensorCluster &coarseSensor) {
         angle_estimate.azimuth = lerp(coarseSensor.sensors[0].azPosition, coarseSensor.sensors[1].azPosition, azWeight);
     }
 
-    // TESTING A CHANGE HERE
-    //    float elWeight = 1.0 - (((float)coarseSensor.sensors[4].intensity) / (coarseSensor.sensors[4].intensity +
-    //    azIntensity));
-    //
-    //    angle_estimate.elevation = lerp(coarseSensor.sensors[4].elPosition, coarseSensor.sensors[0].elPosition, elWeight);
     float elWeight = 1.0 - (((float)coarseSensor.sensors[4].intensity) /
                             (coarseSensor.sensors[4].intensity + coarseSensor.sensors[0].intensity));
 
