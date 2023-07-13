@@ -145,7 +145,7 @@ void loop(void)
     indicator_led.last_time = millis();
 
     // Format: Time, Voltage, Current, Estimated Power
-//    Serial.print(t); Serial.print(", "); 
+    Serial.print(t); Serial.print(", "); 
 //    Serial.print(voltage); Serial.print(", "); 
 //    Serial.print(current_mA); Serial.print(", ");
     Serial.println(power_mW);
