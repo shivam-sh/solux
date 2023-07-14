@@ -53,6 +53,9 @@ const int measurePeriodSec = 2;
 int numReading = 0;
 const int totalNumReadings = 5;
 
+const int minDeltaAz = 1000;
+const float keepAz = -9999;
+
 AccelStepper azimuth(AccelStepper::FULL4WIRE, 38, 9, 8, 33);
 AccelStepper elevation(AccelStepper::FULL4WIRE, 10, 3, 1, 7);
 
@@ -150,7 +153,11 @@ void loop() {
         angleEstimate = getCoarseAngleEstimate(coarseSensor);
         Serial.printf("Az:%f\t\tEl:%f\n", angleEstimate.azimuth, angleEstimate.elevation);
         azimuth.stop();
-        moveTo(azSafe, angleEstimate.azimuth);
+        // don't move the azimuth if the azimuth sensors are too close
+        if (angleEstimate.azimuth != keepAz)
+        {
+          moveTo(azSafe, angleEstimate.azimuth);
+        }
         elevation.stop();
         moveTo(elSafe, angleEstimate.elevation);
 
@@ -262,8 +269,9 @@ Position getCoarseAngleEstimate(SensorCluster &coarseSensor) {
 
     int azSensorDist = coarseSensor.sensors[0].azPosition - coarseSensor.sensors[1].azPosition;
 
-    if (coarseSensor.sensors[0].intensity - coarseSensor.sensors[3].intensity < 1000) {
-      angle_estimate.azimuth = 0;
+    if (coarseSensor.sensors[0].intensity - coarseSensor.sensors[3].intensity < minDeltaAz) {
+      // azimuthial sensors are too similar, keep the azimuth position and just point straight up
+      angle_estimate.azimuth = keepAz;
       angle_estimate.elevation = 90;
       return angle_estimate;
     } else if (abs(azSensorDist) == 180) {
