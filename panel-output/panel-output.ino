@@ -22,7 +22,7 @@ float t = 0;
 
 // expected power on panel
 // get this value from a python script using an average intensity during the time
-float max_power_mW = 2;
+float max_power_mW = 40;
 
 typedef struct cmyLED
 {

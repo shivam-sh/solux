@@ -46,7 +46,7 @@ Adafruit_NeoPixel pixel(NUMPIXELS, PIN, NEO_RGB + NEO_KHZ800);
 
 PanelState currentState = WAITING;
 unsigned long lastMove = 0;
-const int movePeriodSec = 15;
+const int movePeriodSec = 10;
 
 unsigned long lastMeasure = 0;
 const int measurePeriodSec = 2;
@@ -262,9 +262,12 @@ Position getCoarseAngleEstimate(SensorCluster &coarseSensor) {
 
     int azSensorDist = coarseSensor.sensors[0].azPosition - coarseSensor.sensors[1].azPosition;
 
-    if (abs(azSensorDist) == 180) {
+    if (coarseSensor.sensors[0].intensity - coarseSensor.sensors[3].intensity < 1000) {
+      angle_estimate.azimuth = 0;
+      angle_estimate.elevation = 90;
+      return angle_estimate;
+    } else if (abs(azSensorDist) == 180) {
         angle_estimate.azimuth = coarseSensor.sensors[0].azPosition;
-
     } else if (azSensorDist == 270) {
         angle_estimate.azimuth = lerp(270, 360, azWeight);
     } else if (azSensorDist == -270) {
