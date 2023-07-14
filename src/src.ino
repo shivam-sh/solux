@@ -152,13 +152,11 @@ void loop() {
         Position angleEstimate = {0, 0};
         angleEstimate = getCoarseAngleEstimate(coarseSensor);
         Serial.printf("Az:%f\t\tEl:%f\n", angleEstimate.azimuth, angleEstimate.elevation);
-        azimuth.stop();
         // don't move the azimuth if the azimuth sensors are too close
         if (angleEstimate.azimuth != keepAz)
         {
           moveTo(azSafe, angleEstimate.azimuth);
         }
-        elevation.stop();
         moveTo(elSafe, angleEstimate.elevation);
 
         currentState = MOVING;
