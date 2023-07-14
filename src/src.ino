@@ -80,7 +80,7 @@ void IRAM_ATTR buttonIsr() {
 }
 
 void setup() {
-    pixel.setPixelColor(0, pixel.Color(0, 100, 0));
+    pixel.setPixelColor(0, pixel.Color(0, 255, 0));
     pixel.show();
 
     pinMode(13, OUTPUT);
@@ -105,7 +105,7 @@ void loop() {
     pixel.clear();
 
     if (currentState == WAITING) {
-        pixel.setPixelColor(0, pixel.Color(0, 100, 0));
+        pixel.setPixelColor(0, pixel.Color(0, 255, 0));
         pixel.show();
         if ((millis() - lastMove) * 0.001 > movePeriodSec) {
             currentState = MEASURING;
@@ -113,7 +113,7 @@ void loop() {
     }
 
     if (currentState == MEASURING) {
-        pixel.setPixelColor(0, pixel.Color(0, 100, 100));
+        pixel.setPixelColor(0, pixel.Color(0, 255, 255));
         pixel.show();
         if (numReading >= totalNumReadings) {
             currentState = SET_MOVING;
@@ -131,7 +131,7 @@ void loop() {
     }
 
     if (currentState == SET_MOVING) {
-        pixel.setPixelColor(0, pixel.Color(100, 0, 0));
+        pixel.setPixelColor(0, pixel.Color(255, 0, 0));
         pixel.show();
         // get the median intensity from sensorIntensity and set in coarseSensor
         for (uint8_t i = 0; i < coarseSensor.num_sensors; i++) {
@@ -163,7 +163,7 @@ void loop() {
     }
 
     if (currentState == MOVING) {
-        pixel.setPixelColor(0, pixel.Color(0, 0, 200));
+        pixel.setPixelColor(0, pixel.Color(0, 0, 255));
         pixel.show();
         // check when moving is done to put it back into waiting state
         if (azSafe.stepper->distanceToGo() == 0 && elSafe.stepper->distanceToGo() == 0) {
@@ -171,32 +171,41 @@ void loop() {
             currentState = WAITING;
         }
     }
-
+    
     if (currentState == TESTING) {
-        pixel.setPixelColor(0, pixel.Color(100, 100, 100));
+        pixel.setPixelColor(0, pixel.Color(255, 255, 255));
         pixel.show();
-        if (Serial.available() > 0) {
-            String input = Serial.readStringUntil('\n');
-            Serial.println(input);
+    }
 
-            if (input.startsWith("raz")) {
-                float degrees = input.substring(3).toFloat();
-                move(azSafe, degrees);
-            } else if (input.startsWith("rel")) {
-                float degrees = input.substring(3).toFloat();
-                move(elSafe, degrees);
-            } else if (input.startsWith("az")) {
-                float degrees = input.substring(2).toFloat();
-                moveTo(azSafe, degrees);
-            } else if (input.startsWith("el")) {
-                float degrees = input.substring(2).toFloat();
-                moveTo(elSafe, degrees);
-            } else if (input.startsWith("reset")) {
-                resetElevation(elevation);
-            } else if (input.startsWith("dis")) {
-                azimuth.disableOutputs();
-                elevation.disableOutputs();
-            }
+    if (Serial.available() > 0) {
+        String input = Serial.readStringUntil('\n');
+        Serial.println(input);
+
+        if (input.startsWith("raz")) {
+            float degrees = input.substring(3).toFloat();
+            move(azSafe, degrees);
+            currentState = TESTING;
+        } else if (input.startsWith("rel")) {
+            float degrees = input.substring(3).toFloat();
+            move(elSafe, degrees);
+            currentState = TESTING;
+        } else if (input.startsWith("az")) {
+            float degrees = input.substring(2).toFloat();
+            moveTo(azSafe, degrees);
+            currentState = TESTING;
+        } else if (input.startsWith("el")) {
+            float degrees = input.substring(2).toFloat();
+            moveTo(elSafe, degrees);
+            currentState = TESTING;
+        } else if (input.startsWith("reset")) {
+            resetElevation(elevation);
+            currentState = TESTING;
+        } else if (input.startsWith("dis")) {
+            azimuth.disableOutputs();
+            elevation.disableOutputs();
+            currentState = TESTING;
+        } else if (input.startsWith("wait")) {
+            currentState = WAITING;
         }
     }
 }
