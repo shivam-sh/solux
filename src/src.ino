@@ -46,15 +46,21 @@ Adafruit_NeoPixel pixel(NUMPIXELS, PIN, NEO_RGB + NEO_KHZ800);
 
 PanelState currentState = WAITING;
 unsigned long lastMove = 0;
-const int movePeriodSec = 10;
+const int movePeriodSec = 60;
 
 unsigned long lastMeasure = 0;
 const int measurePeriodSec = 2;
 int numReading = 0;
 const int totalNumReadings = 5;
 
-const int minDeltaAz = 1000;
+unsigned long lastPing = 0;
+const int pingPeriodSec = 10;
+
+const int minDeltaAz = 100;
 const float keepAz = -9999;
+
+unsigned long last = 0;
+float t = 0;
 
 AccelStepper azimuth(AccelStepper::FULL4WIRE, 38, 9, 8, 33);
 AccelStepper elevation(AccelStepper::FULL4WIRE, 10, 3, 1, 7);
@@ -104,6 +110,12 @@ void loop() {
     elevation.run();
     pixel.clear();
 
+    if ((millis() - lastPing) * 0.001 > pingPeriodSec)
+    {
+      Serial.println("ping");
+      lastPing = millis();
+    }
+
     if (currentState == WAITING) {
         pixel.setPixelColor(0, pixel.Color(0, 255, 0));
         pixel.show();
@@ -144,14 +156,16 @@ void loop() {
                 coarseSensor.sensors[i].intensity = sensorIntensity[i][totalNumReadings / 2];
             }
         }
-        Serial.printf("%d\t\t%d\t\t%d\t\t%d\t\t%d\t\t\n", coarseSensor.sensors[0].intensity,
-                      coarseSensor.sensors[1].intensity, coarseSensor.sensors[2].intensity,
-                      coarseSensor.sensors[3].intensity, coarseSensor.sensors[4].intensity);
+//        Serial.printf("%d\t\t%d\t\t%d\t\t%d\t\t%d\t\t\n", coarseSensor.sensors[0].intensity,
+//                      coarseSensor.sensors[1].intensity, coarseSensor.sensors[2].intensity,
+//                      coarseSensor.sensors[3].intensity, coarseSensor.sensors[4].intensity);
 
         // calculate the position to move
         Position angleEstimate = {0, 0};
         angleEstimate = getCoarseAngleEstimate(coarseSensor);
-        Serial.printf("Az:%f\t\tEl:%f\n", angleEstimate.azimuth, angleEstimate.elevation);
+        last = millis();
+        t = last/1000.0; // Time in seconds
+        Serial.printf("%f, %f\, %f\n", t, angleEstimate.azimuth, angleEstimate.elevation);
         // don't move the azimuth if the azimuth sensors are too close
         if (angleEstimate.azimuth != keepAz)
         {

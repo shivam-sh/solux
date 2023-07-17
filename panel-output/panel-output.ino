@@ -7,7 +7,7 @@ Adafruit_INA219 ina219;
 int base = 18;
 
 // Reporting frequency
-float freq = 0.1; // Hz
+float freq = 0.1; // Hz (measures once every 10 seconds)
 // Delay after changing state of transistor
 int del = 10; 
 
@@ -146,8 +146,8 @@ void loop(void)
 
     // Format: Time, Voltage, Current, Estimated Power
     Serial.print(t); Serial.print(", "); 
-//    Serial.print(voltage); Serial.print(", "); 
-//    Serial.print(current_mA); Serial.print(", ");
+    Serial.print(voltage); Serial.print(", "); 
+    Serial.print(current_mA); Serial.print(", ");
     Serial.println(power_mW);
   }
 
