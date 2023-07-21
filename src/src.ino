@@ -46,12 +46,21 @@ Adafruit_NeoPixel pixel(NUMPIXELS, PIN, NEO_RGB + NEO_KHZ800);
 
 PanelState currentState = WAITING;
 unsigned long lastMove = 0;
-const int movePeriodSec = 15;
+const int movePeriodSec = 60;
 
 unsigned long lastMeasure = 0;
 const int measurePeriodSec = 2;
 int numReading = 0;
 const int totalNumReadings = 5;
+
+unsigned long lastPing = 0;
+const int pingPeriodSec = 10;
+
+const int minDeltaAz = 100;
+const float keepAz = -9999;
+
+unsigned long last = 0;
+float t = 0;
 
 AccelStepper azimuth(AccelStepper::FULL4WIRE, 38, 9, 8, 33);
 AccelStepper elevation(AccelStepper::FULL4WIRE, 10, 3, 1, 7);
@@ -77,7 +86,7 @@ void IRAM_ATTR buttonIsr() {
 }
 
 void setup() {
-    pixel.setPixelColor(0, pixel.Color(0, 100, 0));
+    pixel.setPixelColor(0, pixel.Color(0, 255, 0));
     pixel.show();
 
     pinMode(13, OUTPUT);
@@ -101,8 +110,14 @@ void loop() {
     elevation.run();
     pixel.clear();
 
+    if ((millis() - lastPing) * 0.001 > pingPeriodSec)
+    {
+      Serial.println("ping");
+      lastPing = millis();
+    }
+
     if (currentState == WAITING) {
-        pixel.setPixelColor(0, pixel.Color(0, 100, 0));
+        pixel.setPixelColor(0, pixel.Color(0, 255, 0));
         pixel.show();
         if ((millis() - lastMove) * 0.001 > movePeriodSec) {
             currentState = MEASURING;
@@ -110,7 +125,7 @@ void loop() {
     }
 
     if (currentState == MEASURING) {
-        pixel.setPixelColor(0, pixel.Color(0, 100, 100));
+        pixel.setPixelColor(0, pixel.Color(0, 255, 255));
         pixel.show();
         if (numReading >= totalNumReadings) {
             currentState = SET_MOVING;
@@ -128,7 +143,7 @@ void loop() {
     }
 
     if (currentState == SET_MOVING) {
-        pixel.setPixelColor(0, pixel.Color(100, 0, 0));
+        pixel.setPixelColor(0, pixel.Color(255, 0, 0));
         pixel.show();
         // get the median intensity from sensorIntensity and set in coarseSensor
         for (uint8_t i = 0; i < coarseSensor.num_sensors; i++) {
@@ -141,24 +156,28 @@ void loop() {
                 coarseSensor.sensors[i].intensity = sensorIntensity[i][totalNumReadings / 2];
             }
         }
-        Serial.printf("%d\t\t%d\t\t%d\t\t%d\t\t%d\t\t\n", coarseSensor.sensors[0].intensity,
-                      coarseSensor.sensors[1].intensity, coarseSensor.sensors[2].intensity,
-                      coarseSensor.sensors[3].intensity, coarseSensor.sensors[4].intensity);
+//        Serial.printf("%d\t\t%d\t\t%d\t\t%d\t\t%d\t\t\n", coarseSensor.sensors[0].intensity,
+//                      coarseSensor.sensors[1].intensity, coarseSensor.sensors[2].intensity,
+//                      coarseSensor.sensors[3].intensity, coarseSensor.sensors[4].intensity);
 
         // calculate the position to move
         Position angleEstimate = {0, 0};
         angleEstimate = getCoarseAngleEstimate(coarseSensor);
-        Serial.printf("Az:%f\t\tEl:%f\n", angleEstimate.azimuth, angleEstimate.elevation);
-        azimuth.stop();
-        moveTo(azSafe, angleEstimate.azimuth);
-        elevation.stop();
+        last = millis();
+        t = last/1000.0; // Time in seconds
+        Serial.printf("%f, %f\, %f\n", t, angleEstimate.azimuth, angleEstimate.elevation);
+        // don't move the azimuth if the azimuth sensors are too close
+        if (angleEstimate.azimuth != keepAz)
+        {
+          moveTo(azSafe, angleEstimate.azimuth);
+        }
         moveTo(elSafe, angleEstimate.elevation);
 
         currentState = MOVING;
     }
 
     if (currentState == MOVING) {
-        pixel.setPixelColor(0, pixel.Color(0, 0, 200));
+        pixel.setPixelColor(0, pixel.Color(0, 0, 255));
         pixel.show();
         // check when moving is done to put it back into waiting state
         if (azSafe.stepper->distanceToGo() == 0 && elSafe.stepper->distanceToGo() == 0) {
@@ -166,32 +185,41 @@ void loop() {
             currentState = WAITING;
         }
     }
-
+    
     if (currentState == TESTING) {
-        pixel.setPixelColor(0, pixel.Color(100, 100, 100));
+        pixel.setPixelColor(0, pixel.Color(255, 255, 255));
         pixel.show();
-        if (Serial.available() > 0) {
-            String input = Serial.readStringUntil('\n');
-            Serial.println(input);
+    }
 
-            if (input.startsWith("raz")) {
-                float degrees = input.substring(3).toFloat();
-                move(azSafe, degrees);
-            } else if (input.startsWith("rel")) {
-                float degrees = input.substring(3).toFloat();
-                move(elSafe, degrees);
-            } else if (input.startsWith("az")) {
-                float degrees = input.substring(2).toFloat();
-                moveTo(azSafe, degrees);
-            } else if (input.startsWith("el")) {
-                float degrees = input.substring(2).toFloat();
-                moveTo(elSafe, degrees);
-            } else if (input.startsWith("reset")) {
-                resetElevation(elevation);
-            } else if (input.startsWith("dis")) {
-                azimuth.disableOutputs();
-                elevation.disableOutputs();
-            }
+    if (Serial.available() > 0) {
+        String input = Serial.readStringUntil('\n');
+        Serial.println(input);
+
+        if (input.startsWith("raz")) {
+            float degrees = input.substring(3).toFloat();
+            move(azSafe, degrees);
+            currentState = TESTING;
+        } else if (input.startsWith("rel")) {
+            float degrees = input.substring(3).toFloat();
+            move(elSafe, degrees);
+            currentState = TESTING;
+        } else if (input.startsWith("az")) {
+            float degrees = input.substring(2).toFloat();
+            moveTo(azSafe, degrees);
+            currentState = TESTING;
+        } else if (input.startsWith("el")) {
+            float degrees = input.substring(2).toFloat();
+            moveTo(elSafe, degrees);
+            currentState = TESTING;
+        } else if (input.startsWith("reset")) {
+            resetElevation(elevation);
+            currentState = TESTING;
+        } else if (input.startsWith("dis")) {
+            azimuth.disableOutputs();
+            elevation.disableOutputs();
+            currentState = TESTING;
+        } else if (input.startsWith("wait")) {
+            currentState = WAITING;
         }
     }
 }
@@ -262,9 +290,13 @@ Position getCoarseAngleEstimate(SensorCluster &coarseSensor) {
 
     int azSensorDist = coarseSensor.sensors[0].azPosition - coarseSensor.sensors[1].azPosition;
 
-    if (abs(azSensorDist) == 180) {
+    if (coarseSensor.sensors[0].intensity - coarseSensor.sensors[3].intensity < minDeltaAz) {
+      // azimuthial sensors are too similar, keep the azimuth position and just point straight up
+      angle_estimate.azimuth = keepAz;
+      angle_estimate.elevation = 90;
+      return angle_estimate;
+    } else if (abs(azSensorDist) == 180) {
         angle_estimate.azimuth = coarseSensor.sensors[0].azPosition;
-
     } else if (azSensorDist == 270) {
         angle_estimate.azimuth = lerp(270, 360, azWeight);
     } else if (azSensorDist == -270) {
